@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Fire Mission Planner + Dialogue</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      #map {
+        height: 500px;
+        width: 100%;
+        border: 1px solid #ccc;
+      }
+      textarea {
+        width: 100%;
+        font-family: monospace;
+      }
+      button {
+        margin-top: 10px;
+        padding: 8px 16px;
+        margin-right: 10px;
+      }
+      #responseBox {
+        background: #f9f9f9;
+        border: 1px solid #ccc;
+        padding: 10px;
+        white-space: pre-wrap;
+        margin-top: 10px;
+      }
+      .button-group {
+        margin-top: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🔥 Fire Mission Planner</h2>
+    <p>依次点击地图设置：<strong>1. 无人机出发点 🚁</strong> → <strong>2. 火源点 🔥</strong></p>
+
+    <div id="map"></div>
+    
+    <div class="button-group">
+      <button onclick="downloadJSON()">💾 下载任务数据 JSON</button>
+      <button onclick="captureMap()">📸 保存地图截图</button>
+      <button onclick="saveAll()">💾 保存全部数据</button>
+      <button onclick="resetMap()">🔄 重置地图</button>
+    </div>
+
+    <!-- 🟦 对话框区域 -->
+    <div style="margin-top: 30px;">
+      <h3>💬 任务描述对话框</h3>
+      <textarea id="userInput" rows="4" placeholder="请输入任务描述，例如：飞到火源上空盘旋 10 秒..."></textarea><br />
+      <button onclick="handleInput()">📤 发送任务</button>
+      <div id="responseBox">🧠 等待任务描述...</div>
+    </div>
+
+    <script>
+      let map;
+      let startMarker = null;
+      let fireMarker = null;
+      let startPoint = null;
+      let firePoint = null;
+      let startPixelPoint = null;
+      let firePixelPoint = null;
+      let clickCount = 0;
+      let missionDescription = "";
+
+      function initMap() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: { lat: 48.1351, lng: 11.5820 }, // Munich
+          zoom: 13,
+        });
+
+        map.addListener("click", (e) => {
+          const lat = e.latLng.lat();
+          const lng = e.latLng.lng();
+
+          if (clickCount === 0) {
+            startPoint = { lat, lng };
+            startPixelPoint = getPixelPosition(lat, lng);
+            if (startMarker) startMarker.setMap(null);
+            startMarker = new google.maps.Marker({
+              position: { lat, lng },
+              map: map,
+              icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+              title: "🚁 起点",
+            });
+            clickCount++;
+          } else if (clickCount === 1) {
+            firePoint = { lat, lng };
+            firePixelPoint = getPixelPosition(lat, lng);
+            if (fireMarker) fireMarker.setMap(null);
+            fireMarker = new google.maps.Marker({
+              position: { lat, lng },
+              map: map,
+              icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+              title: "🔥 火源",
+            });
+            clickCount++;
+          } else {
+            // 允许重新设置点位
+            if (confirm("是否重新设置起点？")) {
+              resetMap();
+              // 重新设置起点
+              startPoint = { lat, lng };
+              startPixelPoint = getPixelPosition(lat, lng);
+              startMarker = new google.maps.Marker({
+                position: { lat, lng },
+                map: map,
+                icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+                title: "🚁 起点",
+              });
+              clickCount = 1;
+            }
+          }
+        });
+      }
+
+      // 获取经纬度对应的像素坐标
+      function getPixelPosition(lat, lng) {
+        const mapDiv = document.getElementById("map");
+        const mapCenter = map.getCenter();
+        const zoom = map.getZoom();
+        
+        const projection = map.getProjection();
+        if (projection) {
+          const worldCoordinate = projection.fromLatLngToPoint(new google.maps.LatLng(lat, lng));
+          const pixelCoordinate = new google.maps.Point(
+            worldCoordinate.x * Math.pow(2, zoom),
+            worldCoordinate.y * Math.pow(2, zoom)
+          );
+          
+          const mapCenterWorldCoord = projection.fromLatLngToPoint(mapCenter);
+          const mapCenterPixelCoord = new google.maps.Point(
+            mapCenterWorldCoord.x * Math.pow(2, zoom),
+            mapCenterWorldCoord.y * Math.pow(2, zoom)
+          );
+          
+          const relativeX = pixelCoordinate.x - mapCenterPixelCoord.x + mapDiv.offsetWidth / 2;
+          const relativeY = pixelCoordinate.y - mapCenterPixelCoord.y + mapDiv.offsetHeight / 2;
+          
+          return {
+            x: Math.round(relativeX),
+            y: Math.round(relativeY)
+          };
+        }
+        
+        return null;
+      }
+
+      function downloadJSON() {
+        if (!startPoint || !firePoint) {
+          alert("请先设置起点和火源点！");
+          return;
+        }
+
+        if (startPoint) startPixelPoint = getPixelPosition(startPoint.lat, startPoint.lng);
+        if (firePoint) firePixelPoint = getPixelPosition(firePoint.lat, firePoint.lng);
+
+        const missionData = {
+          timestamp: new Date().toISOString(),
+          start_point: {
+            coordinates: startPoint,
+            pixel_position: startPixelPoint
+          },
+          fire_point: {
+            coordinates: firePoint,
+            pixel_position: firePixelPoint
+          },
+          mission_description: missionDescription,
+          map_info: {
+            center: {
+              lat: map.getCenter().lat(),
+              lng: map.getCenter().lng()
+            },
+            zoom_level: map.getZoom(),
+            bounds: map.getBounds() ? {
+              north: map.getBounds().getNorthEast().lat(),
+              south: map.getBounds().getSouthWest().lat(),
+              east: map.getBounds().getNorthEast().lng(),
+              west: map.getBounds().getSouthWest().lng()
+            } : null,
+            map_size: {
+              width: document.getElementById("map").offsetWidth,
+              height: document.getElementById("map").offsetHeight
+            }
+          }
+        };
+
+        const dataStr = JSON.stringify(missionData, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `fire_mission_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function captureMap() {
+        if (!startPoint || !firePoint) {
+          alert("请先设置起点和火源点！");
+          return;
+        }
+
+        if (startPoint) startPixelPoint = getPixelPosition(startPoint.lat, startPoint.lng);
+        if (firePoint) firePixelPoint = getPixelPosition(firePoint.lat, firePoint.lng);
+
+        if (typeof html2canvas === 'undefined') {
+          alert("截图功能需要加载 html2canvas 库。正在尝试简单截图...");
+          simpleCapture();
+          return;
+        }
+
+        html2canvas(document.getElementById("map"), {
+          useCORS: true,
+          allowTaint: true
+        }).then(canvas => {
+          const ctx = canvas.getContext('2d');
+          
+          if (startPixelPoint) {
+            ctx.fillStyle = 'blue';
+            ctx.beginPath();
+            ctx.arc(startPixelPoint.x, startPixelPoint.y, 8, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.fillText('🚁', startPixelPoint.x - 6, startPixelPoint.y + 4);
+          }
+          
+          if (firePixelPoint) {
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(firePixelPoint.x, firePixelPoint.y, 8, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.fillText('🔥', firePixelPoint.x - 6, firePixelPoint.y + 4);
+          }
+
+          ctx.font = '14px Arial';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillRect(10, 10, 400, 120);
+          ctx.fillStyle = 'black';
+          ctx.fillText(`🚁 起点坐标: ${startPoint.lat.toFixed(5)}, ${startPoint.lng.toFixed(5)}`, 15, 30);
+          ctx.fillText(`🚁 起点像素: (${startPixelPoint?.x || 'N/A'}, ${startPixelPoint?.y || 'N/A'})`, 15, 50);
+          ctx.fillText(`🔥 火源坐标: ${firePoint.lat.toFixed(5)}, ${firePoint.lng.toFixed(5)}`, 15, 70);
+          ctx.fillText(`🔥 火源像素: (${firePixelPoint?.x || 'N/A'}, ${firePixelPoint?.y || 'N/A'})`, 15, 90);
+          ctx.fillText(`📏 地图尺寸: ${canvas.width} × ${canvas.height}`, 15, 110);
+
+          const link = document.createElement('a');
+          link.download = `fire_mission_map_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.png`;
+          link.href = canvas.toDataURL();
+          link.click();
+        }).catch(err => {
+          console.error('截图失败:', err);
+          alert('截图失败，请检查浏览器权限设置');
+        });
+      }
+
+      function simpleCapture() {
+        alert('请使用浏览器的截图功能(如按 Ctrl+Shift+S 或右键"检查"后使用开发者工具截图功能)来保存地图图片。');
+      }
+
+      function saveAll() {
+        if (!startPoint || !firePoint) {
+          alert("请先设置起点和火源点！");
+          return;
+        }
+
+        downloadJSON();
+        setTimeout(() => {
+          captureMap();
+        }, 1000);
+      }
+
+      function resetMap() {
+        if (startMarker) {
+          startMarker.setMap(null);
+          startMarker = null;
+        }
+        if (fireMarker) {
+          fireMarker.setMap(null);
+          fireMarker = null;
+        }
+        startPoint = null;
+        firePoint = null;
+        startPixelPoint = null;
+        firePixelPoint = null;
+        clickCount = 0;
+        missionDescription = "";
+        document.getElementById("userInput").value = "";
+        document.getElementById("responseBox").textContent = "🧠 等待任务描述...";
+      }
+
+      function handleInput() {
+        const input = document.getElementById("userInput").value.trim();
+        if (!input) {
+          alert("请输入任务描述！");
+          return;
+        }
+
+        missionDescription = input;
+        const simulatedResponse = `✅ 系统已接收任务描述：\n"${input}"\n\n🚁 起点: ${startPoint ? `${startPoint.lat.toFixed(5)}, ${startPoint.lng.toFixed(5)} (像素: ${startPixelPoint?.x}, ${startPixelPoint?.y})` : "未设置"}\n🔥 火源: ${firePoint ? `${firePoint.lat.toFixed(5)}, ${firePoint.lng.toFixed(5)} (像素: ${firePixelPoint?.x}, ${firePixelPoint?.y})` : "未设置"}\n\n🧠 （此处可替换为 Gemini 模型返回的响应）`;
+        document.getElementById("responseBox").textContent = simulatedResponse;
+      }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script
+      async
+      defer
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDK7bsI0iO4u_4uYghuSAloEhrFPEeQyoY&callback=initMap"
+    ></script>
+  </body>
+</html>

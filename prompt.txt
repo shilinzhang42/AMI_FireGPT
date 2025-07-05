@@ -1,0 +1,11 @@
+You are a mission planner for an autonomous firefighting drone system. Given the following geographic coordinates:
+Start Point,Fire Point
+The drone is equipped with real-time navigation, obstacle avoidance, and a limited water payload.
+Describe the detailed step-by-step mission plan for the drone to reach the fire point and extinguish the fire. The steps should include:
+Pre-flight checks and environmental assessment
+Optimal flight path planning and altitude selection
+Dynamic obstacle avoidance during flight
+Arrival strategy at the fire location
+Fire suppression method deployment (e.g. water dump, hover-and-spray)
+Return-to-base logic or reloading sequence if needed
+Consider energy limits, airspace safety, and efficiency. Output the steps in numbered order and explain reasoning briefly for each step.

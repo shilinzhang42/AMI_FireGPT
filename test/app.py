@@ -179,7 +179,7 @@ def calculate_optimal_map_view(fire_points, drone_start_point):
     
     if not all_points:
         # 如果没有点，返回默认值
-        return [48.1351, 11.5820], 12
+        return [42.427511, 128.119812], 12
     
     if len(all_points) == 1:
         # 如果只有一个点，以该点为中心
@@ -208,11 +208,11 @@ def calculate_optimal_map_view(fire_points, drone_start_point):
     
     # 根据点的分布范围确定缩放级别
     if max_diff < 0.001:      # 非常近的点
-        zoom = 35
+        zoom = 23
     elif max_diff < 0.005:    # 很近的点
-        zoom = 25
-    elif max_diff < 0.01:     # 近距离
         zoom = 20
+    elif max_diff < 0.01:     # 近距离
+        zoom = 17
     elif max_diff < 0.05:     # 中等距离
         zoom = 15
     elif max_diff < 0.1:      # 较远距离
@@ -257,6 +257,7 @@ def generate_map_screenshot(fire_points, drone_start_point):
             "center": f"{optimal_center[0]:.6f},{optimal_center[1]:.6f}",
             "zoom": str(optimal_zoom),
             "size": "640x480",
+            "scale": "2",  # 使图像分辨率翻倍（1280x1280）
             "maptype": "satellite",
             "key": GOOGLE_MAPS_API_KEY,
             "format": "png"
@@ -441,7 +442,7 @@ with col1:
                     "drone_start_point": st.session_state.drone_start_point
                 }
                 
-                # 自动生成地图截图（如果有点数据）- 移除map_center参数
+                # 自动生成地图截图（如果有点数据）
                 map_screenshot = None
                 if st.session_state.fire_points or st.session_state.drone_start_point:
                     try:
@@ -452,19 +453,34 @@ with col1:
                         )
                     except Exception as e:
                         st.error(f"Error capturing map screenshot: {e}")
-            
-                # Append input and result to history
-                result = generate_content(
-                    user_input, 
-                    st.session_state.uploaded_image if "uploaded_image" in st.session_state else None,
-                    map_context,
-                    map_screenshot
-                )
-                st.session_state.history.append({
-                    "input": user_input,
-                    "result": result,
-                    "has_map_screenshot": map_screenshot is not None
-                })
+                
+                # 生成回复
+                try:
+                    st.info("🤖 正在生成AI回复...")
+                    result = generate_content(
+                        user_input, 
+                        st.session_state.uploaded_image if "uploaded_image" in st.session_state else None,
+                        map_context,
+                        map_screenshot
+                    )
+                    
+                    # 检查是否成功生成回复
+                    if result:
+                        st.session_state.history.append({
+                            "input": user_input,
+                            "result": result,
+                            "has_map_screenshot": map_screenshot is not None
+                        })
+                        st.success("✅ 回复生成成功！")
+                        # 强制刷新页面以显示新的历史记录
+                        st.rerun()
+                    else:
+                        st.error("❌ 没有收到AI回复")
+                        
+                except Exception as e:
+                    st.error(f"❌ 生成回复时发生错误: {e}")
+                    import traceback
+                    st.error(traceback.format_exc())
 
     # Clear history button
     if st.button("Clear Conversation History"):
@@ -472,6 +488,7 @@ with col1:
         if "uploaded_image" in st.session_state:
             del st.session_state.uploaded_image
         st.success("Conversation history cleared.")
+        st.rerun()
 
 with col2:
     st.subheader("Interactive Map")
@@ -535,4 +552,45 @@ with col2:
             }
             st.session_state.adding_drone_point = False
             st.success(f"Drone start point set at: {clicked_lat:.6f}, {clicked_lng:.6f}")
+    
+# Display conversation history - 确保这部分在正确的位置
+st.markdown("---")
+st.subheader("💬 Conversation History")
+
+if st.session_state.history:
+    for i, record in enumerate(st.session_state.history, 1):
+        # 用户输入
+        with st.container():
+            st.markdown(f"### 👤 User Message {i}")
+            st.markdown(f"**Input:** {record['input']}")
+            
+            # AI回复
+            st.markdown(f"### 🤖 AI Response {i}")
+            if record.get('result'):
+                st.markdown(record['result'])
+            else:
+                st.error("No response generated")
+            
+            # 显示是否包含截图
+            if record.get('has_map_screenshot', False):
+                st.info("📸 This response included a map screenshot")
+            
+            st.markdown("---")
+else:
+    st.info("No conversation history yet. Send a message to start!")
+
+# 添加调试信息
+if st.sidebar.button("🔍 Debug Info"):
+    st.sidebar.write("Session State:")
+    st.sidebar.write(f"History length: {len(st.session_state.history)}")
+    st.sidebar.write(f"Fire points: {len(st.session_state.fire_points)}")
+    st.sidebar.write(f"Has drone point: {st.session_state.drone_start_point is not None}")
+    
+    if st.session_state.history:
+        st.sidebar.write("Latest conversation:")
+        latest = st.session_state.history[-1]
+        st.sidebar.write(f"Input: {latest['input'][:50]}...")
+        st.sidebar.write(f"Has result: {bool(latest.get('result'))}")
+        if latest.get('result'):
+            st.sidebar.write(f"Result length: {len(latest['result'])}")
 
